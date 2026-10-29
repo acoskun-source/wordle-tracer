@@ -1,0 +1,1723 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta name="robots" content="noindex, nofollow">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wordle Python Tracer — Classroom 3-Column Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Fira+Code:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f1f5f9;
+            color: #0f172a;
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+        }
+        .font-mono-code {
+            font-family: 'Fira Code', monospace;
+        }
+        /* Subtle scrollbars for internal panels */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        /* 3-Column Grid Workspace: 40% Code | 38% Variables | 22% Terminal */
+        .workspace-grid {
+            height: calc(100vh - 56px);
+            display: grid;
+            grid-template-columns: minmax(0, 40fr) minmax(0, 38fr) minmax(0, 22fr);
+            gap: 10px;
+            padding: 10px;
+            width: 100%;
+        }
+        .code-line {
+            transition: background-color 0.12s ease, border-color 0.12s ease;
+            cursor: pointer;
+        }
+        .code-line:hover {
+            background-color: #f8fafc;
+        }
+        .code-line-active {
+            background-color: #fef08a !important; /* yellow-200 */
+            border-left: 4px solid #ca8a04 !important; /* yellow-600 */
+            font-weight: 600;
+        }
+        .code-line-prev {
+            background-color: #e2e8f0;
+            border-left: 4px solid #94a3b8;
+        }
+        /* Fixed 5-column alignment for 42x42px cells so lists NEVER wrap */
+        .cell-box {
+            width: 42px;
+            height: 42px;
+            min-width: 42px;
+            min-height: 42px;
+        }
+        @keyframes popIn {
+            0% { transform: scale(0.65); opacity: 0.2; }
+            70% { transform: scale(1.08); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .animate-pop {
+            animation: popIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+        @keyframes strikeShrink {
+            0% { transform: scale(1.05); background-color: #fee2e2; border-color: #ef4444; color: #991b1b; }
+            50% { transform: scale(0.92); background-color: #fecaca; }
+            100% { transform: scale(0.85); opacity: 0.45; }
+        }
+        .animate-removing {
+            animation: strikeShrink 0.35s ease forwards;
+            text-decoration: line-through;
+        }
+        @keyframes pulseRing {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.45); }
+            50% { box-shadow: 0 0 0 5px rgba(37, 99, 235, 0); }
+        }
+        .active-col-glow {
+            animation: pulseRing 1.6s infinite;
+        }
+        /* Unmistakable Mutation Spotlight & Floating Delta Badges */
+        @keyframes mutationPulse {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(225, 29, 72, 0.7); }
+            50% { transform: scale(1.04); box-shadow: 0 0 0 8px rgba(225, 29, 72, 0.15); }
+            100% { transform: scale(1); box-shadow: 0 0 0 3px rgba(225, 29, 72, 0.35); }
+        }
+        .mutation-spotlight {
+            animation: mutationPulse 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            border-color: #e11d48 !important; /* rose-600 */
+            background-color: #fff1f2 !important; /* rose-50 */
+            z-index: 20;
+            position: relative;
+        }
+        .mutation-cell-pop {
+            animation: mutationPulse 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            outline: 3px solid #e11d48 !important;
+            outline-offset: 2px;
+            z-index: 25;
+        }
+        .row-dimmed {
+            opacity: 0.55;
+            transition: opacity 0.2s ease, transform 0.2s ease;
+        }
+        .row-focused {
+            opacity: 1 !important;
+            transition: opacity 0.2s ease, transform 0.2s ease;
+        }
+        @keyframes floatBadge {
+            0% { transform: translateY(4px) scale(0.8); opacity: 0; }
+            100% { transform: translateY(0) scale(1); opacity: 1; }
+        }
+        .delta-badge {
+            animation: floatBadge 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            pointer-events: none;
+            white-space: nowrap;
+            z-index: 35;
+        }
+        /* Animated SVG Bezier Data-Flow Arrow */
+        @keyframes flowDash {
+            to {
+                stroke-dashoffset: -26;
+            }
+        }
+        .flow-arrow-animated {
+            stroke-dasharray: 8 5;
+            animation: flowDash 0.55s linear infinite;
+        }
+
+        /* ===== FIX: responsive layout. Below 1100px the panels stack and the page scrolls ===== */
+        #codeContainer { position: relative; }
+        #explanationText { display: block; -webkit-line-clamp: unset; overflow: visible; }
+        /* header wraps instead of hiding preset buttons; workspace fills the rest of the screen */
+        header { height: auto !important; min-height: 56px !important; flex-wrap: wrap; row-gap: 8px; padding-top: 8px; padding-bottom: 8px; }
+        header > div, header > div > div { flex-wrap: wrap; flex-shrink: 1 !important; min-width: 0; max-width: 100%; overflow: visible !important; }
+        .workspace-grid { height: auto; flex: 1 1 0; min-height: 0; }
+        @media (max-width: 1099px) {
+            body { height: auto; min-height: 100vh; overflow-x: hidden; overflow-y: auto; }
+            .workspace-grid { flex: none; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); }
+            .workspace-grid > section { height: auto !important; min-width: 0; }
+            .workspace-grid > section:nth-child(1) { grid-column: 1 / -1; }
+            #codeContainer { flex: none; height: 42vh; min-height: 220px; }
+            #consoleOutput { flex: none; min-height: 160px; max-height: 340px; }
+        }
+        @media (max-width: 759px) {
+            .workspace-grid { grid-template-columns: minmax(0, 1fr); }
+            .workspace-grid .w-32 { width: 6.75rem !important; }
+        }
+        @media (max-width: 480px) {
+            .workspace-grid { padding: 6px; gap: 8px; }
+            .workspace-grid .w-32 { width: 5.5rem !important; }
+            .cell-box { width: 34px !important; height: 34px !important; min-width: 34px !important; min-height: 34px !important; }
+            .workspace-grid .w-\[42px\] { width: 34px !important; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- =====================================================================
+         TOP COMPACT HEADER BAR (Fixed 56px Height - Clean & Minimal)
+         ===================================================================== -->
+    <header class="h-[56px] min-h-[56px] bg-white border-b border-slate-200 px-4 flex items-center justify-between gap-3 z-30 shadow-xs">
+        
+        <!-- Left: Brand + Preset Selector -->
+        <div class="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
+            <div class="flex items-center gap-2 pr-3 border-r border-slate-200 shrink-0">
+                <div class="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-extrabold text-sm shadow-xs">
+                    W
+                </div>
+                <span class="font-extrabold text-sm tracking-tight text-slate-900 whitespace-nowrap">Wordle Python Tracer</span>
+            </div>
+
+            <!-- Preset Buttons -->
+            <div class="flex items-center gap-1.5 shrink-0">
+                <button onclick="loadPreset('classic')" id="preset-classic" class="preset-btn text-xs font-bold px-2.5 py-1.5 rounded-md bg-indigo-600 text-white shadow-xs transition whitespace-nowrap">
+                    1. "paper" → "apple" (2 Loops)
+                </button>
+                <button onclick="loadPreset('duplicate')" id="preset-duplicate" class="preset-btn text-xs font-semibold px-2.5 py-1.5 rounded-md bg-slate-100 text-slate-700 hover:bg-slate-200 transition whitespace-nowrap">
+                    2. "floor" → "robot" (Duplicate 'o')
+                </button>
+                <button onclick="loadPreset('invalid')" id="preset-invalid" class="preset-btn text-xs font-semibold px-2.5 py-1.5 rounded-md bg-slate-100 text-slate-700 hover:bg-slate-200 transition whitespace-nowrap">
+                    3. "cat" → "plane" (while != 5)
+                </button>
+                <button onclick="loadPreset('gameover')" id="preset-gameover" class="preset-btn text-xs font-semibold px-2.5 py-1.5 rounded-md bg-slate-100 text-slate-700 hover:bg-slate-200 transition whitespace-nowrap">
+                    4. Last Try (attempt = 5)
+                </button>
+            </div>
+        </div>
+
+        <!-- Right: Essential Step Controls Only -->
+        <div class="flex items-center gap-2 shrink-0">
+            <div class="flex items-center bg-slate-100 p-1 rounded-lg border border-slate-200 gap-1">
+                <button onclick="resetToStart()" id="btnReset" title="Reset to Step 1" class="px-2 py-1 rounded-md text-xs font-bold text-slate-700 hover:bg-white transition disabled:opacity-40">
+                    ⏮
+                </button>
+                <button onclick="stepBack()" id="btnBack" title="Step Back (Left Arrow)" class="px-2.5 py-1 rounded-md text-xs font-bold text-slate-700 hover:bg-white transition disabled:opacity-40">
+                    ◀ Back
+                </button>
+                <button onclick="stepForward()" id="btnForward" title="Next Step (Right Arrow)" class="px-3 py-1 rounded-md text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white transition disabled:opacity-40">
+                    Next ▶
+                </button>
+                <button onclick="skipCurrentLoop()" id="btnSkipLoop" title="Fast-forward current inner i-loop" class="px-2.5 py-1 rounded-md text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white transition disabled:opacity-40 whitespace-nowrap">
+                    ⏭ Skip i-Loop
+                </button>
+                <button onclick="jumpToNextAttempt()" id="btnNextAttempt" title="Jump to next attempt" class="px-2.5 py-1 rounded-md text-xs font-bold bg-purple-600 hover:bg-purple-700 text-white transition disabled:opacity-40 whitespace-nowrap">
+                    🔁 Next Try
+                </button>
+            </div>
+
+            <span id="stepCounterText" class="text-xs font-mono-code font-bold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200 whitespace-nowrap">
+                Step 1/1
+            </span>
+        </div>
+    </header>
+
+    <!-- =====================================================================
+         DYNAMIC SVG BEZIER DATA-FLOW OVERLAY (Code -> Memory / Console Lines)
+         ===================================================================== -->
+    <svg id="flow-svg-overlay" class="fixed inset-0 pointer-events-none z-40" style="width:100vw;height:100vh;">
+        <defs>
+            <marker id="arrow-head-rose" markerWidth="10" markerHeight="10" refX="7" refY="3.5" orient="auto" markerUnits="strokeWidth">
+                <path d="M0,0 L0,7 L8,3.5 z" fill="#e11d48" />
+            </marker>
+            <marker id="arrow-head-emerald" markerWidth="10" markerHeight="10" refX="7" refY="3.5" orient="auto" markerUnits="strokeWidth">
+                <path d="M0,0 L0,7 L8,3.5 z" fill="#059669" />
+            </marker>
+            <marker id="arrow-head-indigo" markerWidth="10" markerHeight="10" refX="7" refY="3.5" orient="auto" markerUnits="strokeWidth">
+                <path d="M0,0 L0,7 L8,3.5 z" fill="#4f46e5" />
+            </marker>
+            <marker id="arrow-head-amber" markerWidth="10" markerHeight="10" refX="7" refY="3.5" orient="auto" markerUnits="strokeWidth">
+                <path d="M0,0 L0,7 L8,3.5 z" fill="#d97706" />
+            </marker>
+            <marker id="arrow-head-purple" markerWidth="10" markerHeight="10" refX="7" refY="3.5" orient="auto" markerUnits="strokeWidth">
+                <path d="M0,0 L0,7 L8,3.5 z" fill="#9333ea" />
+            </marker>
+        </defs>
+        <g id="flow-arrows-group"></g>
+    </svg>
+    <div id="flow-action-pill" class="hidden fixed pointer-events-none z-50 px-2.5 py-0.5 rounded-full text-[11px] font-mono-code font-extrabold text-white shadow-md"></div>
+
+    <!-- =====================================================================
+         MAIN 3-COLUMN WORKSPACE (calc(100vh - 56px), No Page Scroll)
+         ===================================================================== -->
+    <main class="workspace-grid">
+
+        <!-- =================================================================
+             COLUMN 1 (Left 40%): Pinned Explanation + Scrollable Code Panel
+             ================================================================= -->
+        <section class="bg-white rounded-xl border border-slate-200 shadow-xs flex flex-col h-full overflow-hidden">
+            
+            <!-- Pinned Pedagogical Explanation Banner -->
+            <div id="explanationBanner" class="p-3 bg-indigo-50/90 border-b border-indigo-100 shrink-0 transition-colors duration-200">
+                <div class="flex items-center justify-between mb-1">
+                    <div class="flex items-center gap-2">
+                        <span class="text-[10px] font-extrabold uppercase tracking-wider text-indigo-700">
+                            Current Step Explanation
+                        </span>
+                        <span id="loopRestartBanner" class="hidden px-2 py-0.5 rounded-full bg-purple-600 text-white text-[10px] font-extrabold tracking-wide uppercase shadow-xs">
+                            🔁 Next Attempt
+                        </span>
+                    </div>
+                    <span id="currentLineBadge" class="text-[11px] font-mono-code font-bold px-2 py-0.5 rounded bg-indigo-200/80 text-indigo-950">
+                        Line 1
+                    </span>
+                </div>
+                <p id="explanationText" class="text-xs sm:text-[13px] font-medium text-slate-800 leading-snug line-clamp-2 min-h-[2.4rem]">
+                    Initializing Wordle algorithm trace...
+                </p>
+            </div>
+
+            <!-- Independently Scrollable Code Container -->
+            <div id="codeContainer" class="flex-1 overflow-y-auto py-2 px-1 font-mono-code text-[12.5px] leading-[1.6] select-none">
+                <!-- Populated dynamically by JS -->
+            </div>
+        </section>
+
+        <!-- =================================================================
+             COLUMN 2 (Center 38%): Fixed Non-Wrapping Variable & List Tracker
+             ================================================================= -->
+        <section class="bg-white rounded-xl border border-slate-200 shadow-xs p-3 flex flex-col justify-between h-full overflow-hidden">
+            
+            <!-- Top: Scalar Variables Bar -->
+            <div class="shrink-0">
+                <div class="flex items-center justify-between border-b border-slate-100 pb-2 mb-2">
+                    <span class="text-xs font-extrabold uppercase tracking-wider text-slate-700">
+                        Variables &amp; Lists in Memory
+                    </span>
+                </div>
+
+                <!-- Single-row scalar badges -->
+                <div class="grid grid-cols-3 gap-2 pt-2">
+                    <!-- NUM_ATTEMPTS Card -->
+                    <div id="card-num-attempts" class="relative px-2.5 py-1.5 rounded-lg bg-slate-50 border-2 border-dashed border-slate-300 flex items-center justify-between transition-all">
+                        <span id="badge-num-attempts" class="hidden delta-badge absolute -top-3 right-1 px-1.5 py-0.2 rounded bg-rose-600 text-white text-[9px] font-mono-code font-extrabold shadow-xs">NEW! = 6</span>
+                        <span class="text-[11px] font-mono-code font-semibold text-slate-600">NUM_ATTEMPTS</span>
+                        <span id="varNumAttempts" class="text-xs font-mono-code font-bold text-slate-400 italic">unset</span>
+                    </div>
+
+                    <!-- attempt Card -->
+                    <div id="card-attempt" class="relative px-2.5 py-1.5 rounded-lg bg-purple-50/60 border-2 border-dashed border-purple-200 flex items-center justify-between transition-all">
+                        <span id="badge-attempt" class="hidden delta-badge absolute -top-3 right-1 px-1.5 py-0.2 rounded bg-purple-600 text-white text-[9px] font-mono-code font-extrabold shadow-xs">SET 0</span>
+                        <span class="text-[11px] font-mono-code font-semibold text-purple-800">attempt</span>
+                        <div class="flex items-center gap-1">
+                            <span id="varAttempt" class="text-xs font-mono-code font-bold text-purple-400 italic">0</span>
+                            <span id="attemptHumanBadge" class="text-[10px] font-bold px-1 rounded bg-purple-200 text-purple-900 hidden">#1</span>
+                        </div>
+                    </div>
+
+                    <!-- index i Card -->
+                    <div id="iBadgeContainer" class="relative px-2.5 py-1.5 rounded-lg bg-blue-50/60 border-2 border-dashed border-blue-200 flex items-center justify-between transition-all">
+                        <span id="badge-i" class="hidden delta-badge absolute -top-3 right-1 px-1.5 py-0.2 rounded bg-blue-600 text-white text-[9px] font-mono-code font-extrabold shadow-xs">i = 0</span>
+                        <span id="iBadgeLabel" class="text-[11px] font-mono-code font-bold text-blue-800">index i</span>
+                        <span id="varI" class="text-xs font-mono-code font-bold text-blue-400 italic">unset</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Middle: 5-Column Aligned Character & List Matrix (NEVER WRAPS) -->
+            <div class="bg-slate-50/80 rounded-xl border border-slate-200/90 p-2.5 flex flex-col justify-around flex-1 my-2 overflow-x-auto">
+                
+                <!-- 1. Index Ruler (0 1 2 3 4) -->
+                <div class="flex items-center justify-between whitespace-nowrap flex-nowrap px-1.5">
+                    <div class="w-32 shrink-0 text-[11px] font-mono-code font-bold text-slate-400 uppercase">
+                        Index (0..4)
+                    </div>
+                    <div class="flex items-center shrink-0">
+                        <span class="w-4"></span>
+                        <div class="flex items-center gap-1.5">
+                            <div id="col-header-0" class="w-[42px] text-center text-xs font-mono-code font-bold text-slate-500 py-0.5 rounded transition-all">[0]</div>
+                            <div id="col-header-1" class="w-[42px] text-center text-xs font-mono-code font-bold text-slate-500 py-0.5 rounded transition-all">[1]</div>
+                            <div id="col-header-2" class="w-[42px] text-center text-xs font-mono-code font-bold text-slate-500 py-0.5 rounded transition-all">[2]</div>
+                            <div id="col-header-3" class="w-[42px] text-center text-xs font-mono-code font-bold text-slate-500 py-0.5 rounded transition-all">[3]</div>
+                            <div id="col-header-4" class="w-[42px] text-center text-xs font-mono-code font-bold text-slate-500 py-0.5 rounded transition-all">[4]</div>
+                        </div>
+                        <span class="w-4"></span>
+                    </div>
+                </div>
+
+                <!-- 2. secret_word Row (Single Cohesive String Pill with "quotes") -->
+                <div id="row-secret-word" class="relative flex items-center justify-between whitespace-nowrap flex-nowrap p-1.5 rounded-lg border-2 border-transparent transition-all">
+                    <span id="badge-secret-word" class="hidden delta-badge absolute -top-2.5 left-24 px-2 py-0.5 rounded bg-rose-600 text-white text-[9px] font-mono-code font-extrabold shadow-xs">NEW!</span>
+                    <div class="w-32 shrink-0">
+                        <span class="font-mono-code text-xs font-bold text-slate-800 block">secret_word</span>
+                        <span class="text-[10px] font-mono-code text-indigo-600 font-semibold">str (immutable)</span>
+                    </div>
+                    <div class="flex items-center shrink-0" id="secretWordRow">
+                        <!-- Single cohesive string capsule injected by JS -->
+                    </div>
+                </div>
+
+                <!-- 3. Vertical Comparison Indicator Row (== or !=) -->
+                <div id="row-comparison" class="flex items-center justify-between whitespace-nowrap flex-nowrap h-5 px-1.5 transition-all">
+                    <div class="w-32 shrink-0 text-[10px] font-mono-code text-slate-400 italic">
+                        secret[i] == guess[i]
+                    </div>
+                    <div class="flex items-center shrink-0">
+                        <span class="w-4"></span>
+                        <div class="flex items-center gap-1.5" id="comparisonRow">
+                            <!-- 5 comparison indicators injected by JS -->
+                        </div>
+                        <span class="w-4"></span>
+                    </div>
+                </div>
+
+                <!-- 4. guess Row (Single Cohesive String Pill with "quotes") -->
+                <div id="row-guess" class="relative flex items-center justify-between whitespace-nowrap flex-nowrap p-1.5 rounded-lg border-2 border-transparent transition-all">
+                    <span id="badge-guess" class="hidden delta-badge absolute -top-2.5 left-16 px-2 py-0.5 rounded bg-rose-600 text-white text-[9px] font-mono-code font-extrabold shadow-xs">INPUT!</span>
+                    <div class="w-32 shrink-0">
+                        <span class="font-mono-code text-xs font-bold text-slate-800 block">guess</span>
+                        <span id="guessLenBadge" class="text-[10px] font-mono-code text-slate-400 block">str (not entered)</span>
+                    </div>
+                    <div class="flex items-center shrink-0" id="guessWordRow">
+                        <!-- Single cohesive string capsule injected by JS -->
+                    </div>
+                </div>
+
+                <hr class="border-slate-200/80 my-0.5">
+
+                <!-- 5. result List Row (Explicit [ , ] List Brackets) -->
+                <div id="row-result" class="relative flex items-center justify-between whitespace-nowrap flex-nowrap p-1.5 rounded-lg border-2 border-transparent transition-all">
+                    <span id="badge-result" class="hidden delta-badge absolute -top-2.5 left-16 px-2 py-0.5 rounded bg-emerald-600 text-white text-[9px] font-mono-code font-extrabold shadow-xs">LIST []</span>
+                    <div class="w-32 shrink-0">
+                        <span class="font-mono-code text-xs font-bold text-slate-800 block">result</span>
+                        <span class="text-[10px] font-mono-code text-emerald-700 font-semibold">list (mutable)</span>
+                    </div>
+                    <div class="flex items-center shrink-0">
+                        <span class="w-4 text-center font-mono-code text-lg font-extrabold text-slate-400 select-none">[</span>
+                        <div class="flex items-center gap-1.5" id="resultListRow">
+                            <!-- 5 fixed 42x42 cells injected by JS -->
+                        </div>
+                        <span class="w-4 text-center font-mono-code text-lg font-extrabold text-slate-400 select-none">]</span>
+                    </div>
+                </div>
+
+                <!-- 6. remaining_letters List Row (Explicit [ , ] List Brackets) -->
+                <div id="row-remaining" class="relative flex items-center justify-between whitespace-nowrap flex-nowrap bg-amber-50/70 p-1.5 rounded-lg border-2 border-amber-200/90 transition-all">
+                    <span id="badge-remaining" class="hidden delta-badge absolute -top-2.5 left-28 px-2 py-0.5 rounded bg-amber-600 text-white text-[9px] font-mono-code font-extrabold shadow-xs">POOL</span>
+                    <div class="w-32 shrink-0 pr-1">
+                        <span class="font-mono-code text-xs font-extrabold text-amber-950 block">remaining_letters</span>
+                        <span id="remainingActionBadge" class="text-[10px] font-mono-code font-bold text-amber-700 block truncate">list (mutable)</span>
+                    </div>
+                    <div class="flex items-center shrink-0">
+                        <span class="w-4 text-center font-mono-code text-lg font-extrabold text-amber-500 select-none">[</span>
+                        <div class="flex items-center gap-1.5" id="remainingLettersRow">
+                            <!-- 5 fixed 42x42 slots on a single horizontal line -->
+                        </div>
+                        <span class="w-4 text-center font-mono-code text-lg font-extrabold text-amber-500 select-none">]</span>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Bottom: result_str Live String Builder (Single Non-Wrapping Row) -->
+            <div id="row-result-str" class="relative shrink-0 bg-slate-50 rounded-xl border-2 border-slate-200 p-2.5 flex items-center justify-between gap-2 transition-all">
+                <span id="badge-result-str" class="hidden delta-badge absolute -top-2.5 left-24 px-2 py-0.5 rounded bg-indigo-600 text-white text-[9px] font-mono-code font-extrabold shadow-xs">APPEND STR</span>
+                <div class="shrink-0">
+                    <span class="font-mono-code text-xs font-extrabold text-slate-800 block">result_str</span>
+                    <span class="text-[10px] text-slate-400">Formatted output</span>
+                </div>
+                <div id="resultStrContainer" class="flex-1 bg-white rounded-lg border border-slate-200 px-3 py-1.5 font-mono-code text-xs sm:text-sm font-bold text-indigo-950 whitespace-nowrap overflow-x-auto text-right">
+                    <span class="text-xs font-normal text-slate-400 italic">Not initialized yet</span>
+                </div>
+            </div>
+
+        </section>
+
+        <!-- =================================================================
+             COLUMN 3 (Right 22%): Clean Full-Height Console / Terminal
+             ================================================================= -->
+        <section class="flex flex-col h-full overflow-hidden">
+            
+            <!-- Dark Console / Terminal Output -->
+            <div id="terminal-card" class="relative bg-slate-900 rounded-xl border-2 border-slate-800 shadow-xs p-3.5 flex-1 flex flex-col overflow-hidden transition-all">
+                <div class="flex items-center justify-between pb-2.5 mb-3 border-b border-slate-800 shrink-0">
+                    <div class="flex items-center gap-1.5">
+                        <span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
+                        <span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+                        <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                        <span class="text-xs font-mono-code font-bold text-slate-200 ml-1.5">Console Output</span>
+                    </div>
+                    <span class="text-[10px] font-mono-code text-slate-400">print() / input()</span>
+                </div>
+
+                <!-- Scrollable Console Lines (Each line has #console-line-N for exact arrow targeting) -->
+                <div id="consoleOutput" class="flex-1 font-mono-code text-xs text-slate-100 space-y-2 overflow-y-auto pr-1">
+                    <!-- Populated dynamically -->
+                </div>
+            </div>
+
+        </section>
+
+    </main>
+
+    <script>
+        // ============================================================================
+        // 1. EXACT SIMPLIFIED PYTHON CODE LINES (Matches Classroom Specification)
+        // ============================================================================
+        // Exact official solution: all 77 lines, real line numbers
+        const CODE_LINES = [
+            { line: 1, code: "from words import get_random_word", phase: 'Setup', phaseStep: 1 },
+            { line: 2, code: "", phase: 'Setup', phaseStep: 1 },
+            { line: 3, code: "NUM_ATTEMPTS = 6", phase: 'Setup', phaseStep: 1 },
+            { line: 4, code: "", phase: 'Setup', phaseStep: 1 },
+            { line: 5, code: "def main():", phase: 'Setup', phaseStep: 1 },
+            { line: 6, code: "    # Print welcome message", phase: 'Setup', phaseStep: 1 },
+            { line: 7, code: "    print(\"Welcome to Wordle!\")", phase: 'Setup', phaseStep: 1 },
+            { line: 8, code: "", phase: 'Setup', phaseStep: 1 },
+            { line: 9, code: "    # Set the secret word", phase: 'Setup', phaseStep: 1 },
+            { line: 10, code: "    secret_word = get_random_word()", phase: 'Setup', phaseStep: 1 },
+            { line: 11, code: "", phase: 'Setup', phaseStep: 1 },
+            { line: 12, code: "    # Let the player guess up to NUM_ATTEMPTS", phase: 'Phase 1: Input', phaseStep: 1 },
+            { line: 13, code: "    for attempt in range(NUM_ATTEMPTS):", phase: 'Phase 1: Input', phaseStep: 1 },
+            { line: 14, code: "", phase: 'Phase 1: Input', phaseStep: 1 },
+            { line: 15, code: "        # Get the guess from the user", phase: 'Phase 1: Input', phaseStep: 1 },
+            { line: 16, code: "        guess = input(\"Enter your guess: \").lower()", phase: 'Phase 1: Input', phaseStep: 1 },
+            { line: 17, code: "        while len(guess) != 5:", phase: 'Phase 1: Input', phaseStep: 1 },
+            { line: 18, code: "            print(\"Please enter a 5-letter word.\")", phase: 'Phase 1: Input', phaseStep: 1 },
+            { line: 19, code: "            guess = input(\"Enter your guess: \").lower()", phase: 'Phase 1: Input', phaseStep: 1 },
+            { line: 20, code: "", phase: 'Phase 2: Copy Remaining', phaseStep: 2 },
+            { line: 21, code: "        # Initialize remaining_letters to contain", phase: 'Phase 2: Copy Remaining', phaseStep: 2 },
+            { line: 22, code: "        # the remaining letters in the secret word", phase: 'Phase 2: Copy Remaining', phaseStep: 2 },
+            { line: 23, code: "        remaining_letters = []", phase: 'Phase 2: Copy Remaining', phaseStep: 2 },
+            { line: 24, code: "        for i in range(5):", phase: 'Phase 2: Copy Remaining', phaseStep: 2 },
+            { line: 25, code: "            remaining_letters.append(secret_word[i])", phase: 'Phase 2: Copy Remaining', phaseStep: 2 },
+            { line: 26, code: "", phase: 'Phase 3: Green Pass', phaseStep: 3 },
+            { line: 27, code: "        # Compare the guess to the secret word", phase: 'Phase 3: Green Pass', phaseStep: 3 },
+            { line: 28, code: "        result = []", phase: 'Phase 3: Green Pass', phaseStep: 3 },
+            { line: 29, code: "        for i in range(5):", phase: 'Phase 3: Green Pass', phaseStep: 3 },
+            { line: 30, code: "            if secret_word[i] == guess[i]:", phase: 'Phase 3: Green Pass', phaseStep: 3 },
+            { line: 31, code: "                # It's a match!", phase: 'Phase 3: Green Pass', phaseStep: 3 },
+            { line: 32, code: "                result.append(\"G\")", phase: 'Phase 3: Green Pass', phaseStep: 3 },
+            { line: 33, code: "", phase: 'Phase 3: Green Pass', phaseStep: 3 },
+            { line: 34, code: "                # Update the remaining letters", phase: 'Phase 3: Green Pass', phaseStep: 3 },
+            { line: 35, code: "                remaining_letters.remove(secret_word[i])", phase: 'Phase 3: Green Pass', phaseStep: 3 },
+            { line: 36, code: "            else:", phase: 'Phase 3: Green Pass', phaseStep: 3 },
+            { line: 37, code: "                # Not an exact match", phase: 'Phase 3: Green Pass', phaseStep: 3 },
+            { line: 38, code: "                result.append(\"B\")", phase: 'Phase 3: Green Pass', phaseStep: 3 },
+            { line: 39, code: "", phase: 'Phase 4: Yellow Pass', phaseStep: 4 },
+            { line: 40, code: "        # Look for the yellow letters", phase: 'Phase 4: Yellow Pass', phaseStep: 4 },
+            { line: 41, code: "        for i in range(5):", phase: 'Phase 4: Yellow Pass', phaseStep: 4 },
+            { line: 42, code: "            # Look for letters that were not exact matches", phase: 'Phase 4: Yellow Pass', phaseStep: 4 },
+            { line: 43, code: "            if result[i] == \"B\":", phase: 'Phase 4: Yellow Pass', phaseStep: 4 },
+            { line: 44, code: "                # Check if the guessed letter is somewhere else in the secret word", phase: 'Phase 4: Yellow Pass', phaseStep: 4 },
+            { line: 45, code: "                if guess[i] in remaining_letters:", phase: 'Phase 4: Yellow Pass', phaseStep: 4 },
+            { line: 46, code: "                    result[i] = \"Y\"", phase: 'Phase 4: Yellow Pass', phaseStep: 4 },
+            { line: 47, code: "                    remaining_letters.remove(guess[i])", phase: 'Phase 4: Yellow Pass', phaseStep: 4 },
+            { line: 48, code: "", phase: 'Phase 5: Build String', phaseStep: 5 },
+            { line: 49, code: "        # Build a string from the list and print the result", phase: 'Phase 5: Build String', phaseStep: 5 },
+            { line: 50, code: "        result_str = \"Result:\"", phase: 'Phase 5: Build String', phaseStep: 5 },
+            { line: 51, code: "        for i in range(5):", phase: 'Phase 5: Build String', phaseStep: 5 },
+            { line: 52, code: "            # Append each letter using an f string", phase: 'Phase 5: Build String', phaseStep: 5 },
+            { line: 53, code: "            if result[i] == \"G\":", phase: 'Phase 5: Build String', phaseStep: 5 },
+            { line: 54, code: "                # Put the letter in brackets", phase: 'Phase 5: Build String', phaseStep: 5 },
+            { line: 55, code: "                result_str = f\"{result_str} [{guess[i]}]\"", phase: 'Phase 5: Build String', phaseStep: 5 },
+            { line: 56, code: "", phase: 'Phase 5: Build String', phaseStep: 5 },
+            { line: 57, code: "            if result[i] == \"Y\":", phase: 'Phase 5: Build String', phaseStep: 5 },
+            { line: 58, code: "                # Put the letter in parentheses", phase: 'Phase 5: Build String', phaseStep: 5 },
+            { line: 59, code: "                result_str = f\"{result_str} ({guess[i]})\"", phase: 'Phase 5: Build String', phaseStep: 5 },
+            { line: 60, code: "", phase: 'Phase 5: Build String', phaseStep: 5 },
+            { line: 61, code: "            if result[i] == \"B\":", phase: 'Phase 5: Build String', phaseStep: 5 },
+            { line: 62, code: "                result_str = f\"{result_str} {guess[i]}\"", phase: 'Phase 5: Build String', phaseStep: 5 },
+            { line: 63, code: "", phase: 'Phase 5: Build String', phaseStep: 5 },
+            { line: 64, code: "        # Print out the result string", phase: 'Phase 5: Build String', phaseStep: 5 },
+            { line: 65, code: "        print(result_str)", phase: 'Phase 5: Build String', phaseStep: 5 },
+            { line: 66, code: "", phase: 'Phase 5: Build String', phaseStep: 5 },
+            { line: 67, code: "        # Check if they got it correct", phase: 'Phase 5: Build String', phaseStep: 5 },
+            { line: 68, code: "        if secret_word == guess:", phase: 'Phase 5: Build String', phaseStep: 5 },
+            { line: 69, code: "            print(f\"Congratulations! You guessed the word in {attempt + 1} tries!\")", phase: 'Phase 5: Build String', phaseStep: 5 },
+            { line: 70, code: "            break", phase: 'Phase 5: Build String', phaseStep: 5 },
+            { line: 71, code: "", phase: 'Phase 5: Build String', phaseStep: 5 },
+            { line: 72, code: "        # Check if it's their last attempt", phase: 'Phase 5: Build String', phaseStep: 5 },
+            { line: 73, code: "        if attempt == NUM_ATTEMPTS - 1:", phase: 'Phase 5: Build String', phaseStep: 5 },
+            { line: 74, code: "            print(f\"Better luck next time! The correct word was '{secret_word}'.\")", phase: 'Phase 5: Build String', phaseStep: 5 },
+            { line: 75, code: "", phase: 'Setup', phaseStep: 1 },
+            { line: 76, code: "if __name__ == \"__main__\":", phase: 'Setup', phaseStep: 1 },
+            { line: 77, code: "    main()", phase: 'Setup', phaseStep: 1 }
+        ];
+
+        // ============================================================================
+        // 2. CLASSROOM PRESETS (Multi-Attempt Loop Demonstrations)
+        // ============================================================================
+        const PRESETS = {
+            classic:   { secret: "apple", guesses: ["paper", "apple"], startAttempt: 0 },
+            duplicate: { secret: "robot", guesses: ["floor", "robot"], startAttempt: 0 },
+            invalid:   { secret: "plane", guesses: ["cat", "plane"],   startAttempt: 0 },
+            gameover:  { secret: "smart", guesses: ["crane", "house"], startAttempt: 4 } // Demonstrates attempt=4 -> loops to attempt=5 (6th try loss!)
+        };
+
+        let currentScenario = { secret: "apple", guesses: ["paper", "apple"], startAttempt: 0 };
+        let steps = [];
+        let currentStepIndex = 0;
+
+        // ============================================================================
+        // 3. CODE PANEL RENDERING & CLICK-TO-JUMP
+        // ============================================================================
+        function escapeHtml(str) {
+            return str
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        function formatPythonLine(rawCode) {
+            if (!rawCode.trim()) return '&nbsp;';
+            const KW = new Set(['from', 'import', 'def', 'for', 'in', 'while', 'if', 'else', 'elif', 'break', 'return', 'not', 'and', 'or', 'True', 'False', 'None']);
+            const BI = new Set(['print', 'input', 'range', 'len', 'append', 'remove', 'lower', 'get_random_word', 'main']);
+            const re = /(#.*$)|(f?"(?:[^"\\]|\\.)*"|f?'(?:[^'\\]|\\.)*')|([A-Za-z_]\w*)/g;
+            let out = '', last = 0, m;
+            while ((m = re.exec(rawCode))) {
+                out += escapeHtml(rawCode.slice(last, m.index));
+                const t = escapeHtml(m[0]);
+                if (m[1]) out += `<span class="text-slate-400 italic">${t}</span>`;
+                else if (m[2]) out += `<span class="text-emerald-700 font-semibold">${t}</span>`;
+                else if (KW.has(m[3])) out += `<span class="text-purple-700 font-bold">${t}</span>`;
+                else if (BI.has(m[3]) && rawCode[re.lastIndex] === '(') out += `<span class="text-indigo-600 font-semibold">${t}</span>`;
+                else out += t;
+                last = re.lastIndex;
+            }
+            return out + escapeHtml(rawCode.slice(last));
+        }
+
+        function renderCodePanel() {
+            const container = document.getElementById('codeContainer');
+            container.innerHTML = CODE_LINES.map(item => `
+                <div id="code-line-${item.line}" onclick="jumpToLine(${item.line})" title="Click to jump to next execution of Line ${item.line}" class="code-line flex items-center px-2.5 py-[2px] border-l-4 border-transparent rounded-r">
+                    <span id="arrow-line-${item.line}" class="w-4 text-[11px] select-none opacity-0 transition-opacity">👉</span>
+                    <span class="w-6 text-right pr-2.5 text-slate-400 select-none text-[11px]">${item.line}</span>
+                    <span class="whitespace-pre">${formatPythonLine(item.code)}</span>
+                </div>
+            `).join('');
+        }
+
+        // Jump to the next (or first) occurrence of a clicked line number
+        function jumpToLine(lineNum) {
+            if (!steps.length) return;
+            // Look forward from current step first
+            for (let idx = currentStepIndex + 1; idx < steps.length; idx++) {
+                if (steps[idx].line === lineNum) {
+                    renderStep(idx);
+                    return;
+                }
+            }
+            // Otherwise search from start
+            for (let idx = 0; idx <= currentStepIndex; idx++) {
+                if (steps[idx].line === lineNum) {
+                    renderStep(idx);
+                    return;
+                }
+            }
+        }
+
+        // ============================================================================
+        // 4. TRACE GENERATOR ENGINE
+        // ============================================================================
+        function generateTrace(secretWord, inputQueue, startAttemptOffset = 0) {
+            const trace = [];
+            const state = {
+                numAttempts: null,
+                secretWord: null,
+                attempt: null,
+                guess: null,
+                i: null,
+                remainingLetters: null,
+                result: null,
+                resultStr: null,
+                consoleLines: [],
+                loopId: null
+            };
+
+            function recordStep(line, explanation, overrides = {}) {
+                trace.push({
+                    line,
+                    explanation,
+                    numAttempts: state.numAttempts,
+                    secretWord: state.secretWord,
+                    attempt: state.attempt,
+                    guess: state.guess,
+                    i: state.i,
+                    remainingLetters: state.remainingLetters ? [...state.remainingLetters] : null,
+                    result: state.result ? [...state.result] : null,
+                    resultStr: state.resultStr,
+                    consoleLines: [...state.consoleLines],
+                    loopId: overrides.loopId !== undefined ? overrides.loopId : state.loopId,
+                    activeComparison: overrides.activeComparison || null,
+                    remainingHighlight: overrides.remainingHighlight || null,
+                    resultHighlightIndex: overrides.resultHighlightIndex !== undefined ? overrides.resultHighlightIndex : null,
+                    isLoopRestart: overrides.isLoopRestart || false,
+                    consoleHighlightIndex: overrides.consoleHighlightIndex !== undefined ? overrides.consoleHighlightIndex : null,
+                    // Target Metadata for SVG Bezier Arrow & Row Spotlight
+                    flowTargetId: overrides.flowTargetId || null,
+                    flowSecondaryTargetId: overrides.flowSecondaryTargetId || null,
+                    flowDirection: overrides.flowDirection || 'to-target', // 'to-target' | 'from-secondary'
+                    flowLabel: overrides.flowLabel || null,
+                    flowColor: overrides.flowColor || 'rose',
+                    focusSection: overrides.focusSection || null,
+                    deltaBadge: overrides.deltaBadge || null
+                });
+            }
+
+            // Line 1: from words import get_random_word
+            recordStep(1, `Import helper function <code>get_random_word</code> from the <code>words</code> module.`);
+
+            // Line 3: NUM_ATTEMPTS = 6
+            state.numAttempts = 6;
+            recordStep(3, `Set <code>NUM_ATTEMPTS = 6</code>. The player gets up to 6 tries.`, {
+                flowTargetId: 'card-num-attempts',
+                flowLabel: 'SET = 6',
+                flowColor: 'rose',
+                focusSection: 'card-num-attempts',
+                deltaBadge: { id: 'badge-num-attempts', text: 'NEW! = 6' }
+            });
+
+            // Line 5: def main():
+            recordStep(5, `<code>def main():</code> only <strong>defines</strong> the function. Python remembers it, but nothing inside it runs yet.`);
+
+            // Line 76: if __name__ == "__main__":
+            recordStep(76, `<code>if __name__ == "__main__":</code> is True because this file is run directly, so the next line runs.`);
+
+            // Line 77: main()
+            recordStep(77, `Call <code>main()</code>. Now the code inside <code>main</code> starts running.`);
+
+            // Line 7: print("Welcome to Wordle!")
+            state.consoleLines.push({ type: 'output', text: 'Welcome to Wordle!' });
+            const welcomeLineIdx = state.consoleLines.length - 1;
+            recordStep(7, `Print <code>"Welcome to Wordle!"</code> directly to line 1 of the Console.`, {
+                consoleHighlightIndex: welcomeLineIdx,
+                flowTargetId: `console-line-${welcomeLineIdx}`,
+                flowLabel: 'print()',
+                flowColor: 'emerald',
+                focusSection: 'terminal-card'
+            });
+
+            // Line 10: secret_word = get_random_word()
+            state.secretWord = secretWord.toLowerCase();
+            recordStep(10, `Call <code>get_random_word()</code> and store <strong>"${state.secretWord}"</strong> in <code>secret_word</code>.`, {
+                flowTargetId: 'row-secret-word',
+                flowLabel: `SET "${state.secretWord}"`,
+                flowColor: 'rose',
+                focusSection: 'row-secret-word',
+                deltaBadge: { id: 'badge-secret-word', text: `NEW! "${state.secretWord}"` }
+            });
+
+            let queueIndex = 0;
+            let attemptCounter = startAttemptOffset;
+
+            while (attemptCounter < state.numAttempts && queueIndex < inputQueue.length) {
+                const prevAttempt = state.attempt;
+                const isRestart = prevAttempt !== null;
+                state.attempt = attemptCounter;
+                state.i = null;
+                state.loopId = null;
+
+                // Line 13: for attempt in range(NUM_ATTEMPTS):
+                if (!isRestart) {
+                    recordStep(13, `Start outer loop <code>for attempt in range(NUM_ATTEMPTS):</code> with <code>attempt = ${state.attempt}</code> (Try #${state.attempt + 1}).${startAttemptOffset > 0 ? ` <em>(Demo shortcut: tries #1 to #${startAttemptOffset} are skipped.)</em>` : ''}`, {
+                        flowTargetId: 'card-attempt',
+                        flowLabel: `attempt = ${state.attempt}`,
+                        flowColor: 'indigo',
+                        focusSection: 'card-attempt',
+                        deltaBadge: { id: 'badge-attempt', text: `TRY #${state.attempt + 1}` }
+                    });
+                } else {
+                    recordStep(13, `🔁 <strong>Loop wraps back to Line 13!</strong> Advance <code>attempt: ${prevAttempt} → ${state.attempt}</code> (Try #${state.attempt + 1}).`, {
+                        isLoopRestart: true,
+                        flowTargetId: 'card-attempt',
+                        flowLabel: `🔁 ${prevAttempt} → ${state.attempt}`,
+                        flowColor: 'purple',
+                        focusSection: 'card-attempt',
+                        deltaBadge: { id: 'badge-attempt', text: `${prevAttempt} → ${state.attempt}` }
+                    });
+                }
+
+                // Line 16: guess = input("Enter your guess: ").lower()
+                let rawGuess = inputQueue[queueIndex++];
+                state.guess = rawGuess.toLowerCase();
+                state.consoleLines.push({ type: 'input', prompt: 'Enter your guess: ', typed: rawGuess });
+                const inputLineIdx = state.consoleLines.length - 1;
+                recordStep(16, `Prompt user in the Console and store typed input <strong>"${rawGuess}"</strong> into <code>guess</code>.`, {
+                    consoleHighlightIndex: inputLineIdx,
+                    flowTargetId: 'row-guess',
+                    flowSecondaryTargetId: `console-line-${inputLineIdx}`,
+                    flowDirection: 'from-secondary',
+                    flowLabel: `input("${state.guess}")`,
+                    flowColor: 'rose',
+                    focusSection: 'row-guess',
+                    deltaBadge: { id: 'badge-guess', text: `INPUT "${state.guess}"` }
+                });
+
+                // Line 17: while len(guess) != 5:
+                while (state.guess.length !== 5) {
+                    recordStep(17, `Check <code>len(guess) != 5</code>: Length of <code>"${state.guess}"</code> is <strong>${state.guess.length}</strong> (True, enter while loop).`, {
+                        flowTargetId: 'row-guess',
+                        flowLabel: `len is ${state.guess.length} != 5`,
+                        flowColor: 'amber',
+                        focusSection: 'row-guess',
+                        deltaBadge: { id: 'badge-guess', text: `LEN = ${state.guess.length}!` }
+                    });
+
+                    // Line 18: print("Please enter a 5-letter word.")
+                    state.consoleLines.push({ type: 'error', text: 'Please enter a 5-letter word.' });
+                    const errLineIdx = state.consoleLines.length - 1;
+                    recordStep(18, `Print warning message to the Console.`, {
+                        consoleHighlightIndex: errLineIdx,
+                        flowTargetId: `console-line-${errLineIdx}`,
+                        flowLabel: 'print()',
+                        flowColor: 'amber',
+                        focusSection: 'terminal-card'
+                    });
+
+                    // Line 19: guess = input("Enter your guess: ").lower()
+                    rawGuess = queueIndex < inputQueue.length ? inputQueue[queueIndex++] : secretWord;
+                    state.guess = rawGuess.toLowerCase();
+                    state.consoleLines.push({ type: 'input', prompt: 'Enter your guess: ', typed: rawGuess });
+                    const retryLineIdx = state.consoleLines.length - 1;
+                    recordStep(19, `Read new input <strong>"${state.guess}"</strong> from the Console into <code>guess</code>.`, {
+                        consoleHighlightIndex: retryLineIdx,
+                        flowTargetId: 'row-guess',
+                        flowSecondaryTargetId: `console-line-${retryLineIdx}`,
+                        flowDirection: 'from-secondary',
+                        flowLabel: `input("${state.guess}")`,
+                        flowColor: 'rose',
+                        focusSection: 'row-guess',
+                        deltaBadge: { id: 'badge-guess', text: `NEW "${state.guess}"` }
+                    });
+                }
+
+                // While condition False
+                recordStep(17, `Check <code>len(guess) != 5</code>: Length of <code>"${state.guess}"</code> is <strong>5</strong> (False, skip while loop).`, {
+                    flowTargetId: 'row-guess',
+                    flowLabel: 'len == 5 ✓',
+                    flowColor: 'emerald',
+                    focusSection: 'row-guess'
+                });
+
+                // Line 23: remaining_letters = []
+                state.remainingLetters = [];
+                recordStep(23, `Initialize empty list <code>remaining_letters = []</code>.`, {
+                    flowTargetId: 'row-remaining',
+                    flowLabel: isRestart ? 'RESET []' : 'INIT []',
+                    flowColor: 'amber',
+                    focusSection: 'row-remaining',
+                    deltaBadge: { id: 'badge-remaining', text: isRestart ? 'RESET []' : 'NEW LIST []' }
+                });
+
+                // Loop 1: Copy secret_word letters
+                const copyLoopId = `attempt-${state.attempt}-copy`;
+                for (let idx = 0; idx < 5; idx++) {
+                    state.i = idx;
+                    state.loopId = copyLoopId;
+                    recordStep(24, `Copy Loop: Set index <code>i = ${idx}</code>.`, {
+                        flowTargetId: 'iBadgeContainer',
+                        flowSecondaryTargetId: `col-header-${idx}`,
+                        flowLabel: `i = ${idx}`,
+                        flowColor: 'indigo',
+                        focusSection: 'iBadgeContainer',
+                        deltaBadge: { id: 'badge-i', text: `i = ${idx}` }
+                    });
+
+                    const ch = state.secretWord[idx];
+                    state.remainingLetters.push(ch);
+                    recordStep(25, `Append <code>secret_word[${idx}]</code> (<strong>'${ch}'</strong>) to <code>remaining_letters</code>.`, {
+                        remainingHighlight: { type: 'added', index: state.remainingLetters.length - 1, char: ch },
+                        flowTargetId: `rem-cell-${idx}`,
+                        flowSecondaryTargetId: `secret-cell-${idx}`,
+                        flowDirection: 'from-secondary',
+                        flowLabel: `.append('${ch}')`,
+                        flowColor: 'emerald',
+                        focusSection: 'row-remaining',
+                        deltaBadge: { id: 'badge-remaining', text: `+ '${ch}'` }
+                    });
+                }
+                state.loopId = null;
+                state.i = null;
+
+                // Line 28: result = []
+                state.result = [];
+                recordStep(28, `Initialize empty list <code>result = []</code>.`, {
+                    flowTargetId: 'row-result',
+                    flowLabel: isRestart ? 'RESET []' : 'INIT []',
+                    flowColor: 'rose',
+                    focusSection: 'row-result',
+                    deltaBadge: { id: 'badge-result', text: isRestart ? 'RESET []' : 'NEW LIST []' }
+                });
+
+                // Loop 2: 1st Pass (Greens vs Grays)
+                const pass1LoopId = `attempt-${state.attempt}-pass1`;
+                for (let idx = 0; idx < 5; idx++) {
+                    state.i = idx;
+                    state.loopId = pass1LoopId;
+                    recordStep(29, `1st Pass (Exact Matches): Set <code>i = ${idx}</code>.`, {
+                        flowTargetId: 'iBadgeContainer',
+                        flowSecondaryTargetId: `col-header-${idx}`,
+                        flowLabel: `i = ${idx}`,
+                        flowColor: 'indigo',
+                        focusSection: 'iBadgeContainer',
+                        deltaBadge: { id: 'badge-i', text: `i = ${idx}` }
+                    });
+
+                    const sChar = state.secretWord[idx];
+                    const gChar = state.guess[idx];
+                    const isMatch = sChar === gChar;
+
+                    recordStep(30, `Compare <code>secret_word[${idx}] == guess[${idx}]</code>: Is <strong>'${sChar}' == '${gChar}'</strong>? <strong>${isMatch ? 'True' : 'False'}</strong>.`, {
+                        activeComparison: { index: idx, equal: isMatch },
+                        flowTargetId: `cmp-cell-${idx}`,
+                        flowLabel: `'${sChar}' ${isMatch ? '==' : '!='} '${gChar}'`,
+                        flowColor: isMatch ? 'emerald' : 'rose',
+                        focusSection: 'row-comparison'
+                    });
+
+                    if (isMatch) {
+                        state.result.push("G");
+                        recordStep(32, `Exact match! Append <strong>"G"</strong> to <code>result[${idx}]</code>.`, {
+                            activeComparison: { index: idx, equal: true },
+                            resultHighlightIndex: idx,
+                            flowTargetId: `result-cell-${idx}`,
+                            flowLabel: `append("G")`,
+                            flowColor: 'emerald',
+                            focusSection: 'row-result',
+                            deltaBadge: { id: 'badge-result', text: `+ "G"` }
+                        });
+
+                        const remIdx = state.remainingLetters.indexOf(sChar);
+                        if (remIdx !== -1) state.remainingLetters.splice(remIdx, 1);
+                        recordStep(35, `Remove <strong>'${sChar}'</strong> from <code>remaining_letters</code> so it isn't matched again.`, {
+                            remainingHighlight: { type: 'removed', char: sChar, removedFromIndex: remIdx },
+                            flowTargetId: `rem-cell-${state.remainingLetters.length}`,
+                            flowLabel: `.remove('${sChar}')`,
+                            flowColor: 'rose',
+                            focusSection: 'row-remaining',
+                            deltaBadge: { id: 'badge-remaining', text: `- '${sChar}'` }
+                        });
+                    } else {
+                        recordStep(36, `Not an exact match, go to <code>else:</code>.`, {
+                            activeComparison: { index: idx, equal: false },
+                            flowTargetId: `cmp-cell-${idx}`,
+                            flowLabel: 'else',
+                            flowColor: 'amber',
+                            focusSection: 'row-comparison'
+                        });
+
+                        state.result.push("B");
+                        recordStep(38, `Append <strong>"B"</strong> to <code>result[${idx}]</code>.`, {
+                            activeComparison: { index: idx, equal: false },
+                            resultHighlightIndex: idx,
+                            flowTargetId: `result-cell-${idx}`,
+                            flowLabel: `append("B")`,
+                            flowColor: 'indigo',
+                            focusSection: 'row-result',
+                            deltaBadge: { id: 'badge-result', text: `+ "B"` }
+                        });
+                    }
+                }
+                state.loopId = null;
+                state.i = null;
+
+                // Loop 3: 2nd Pass (Yellows)
+                const pass2LoopId = `attempt-${state.attempt}-pass2`;
+                for (let idx = 0; idx < 5; idx++) {
+                    state.i = idx;
+                    state.loopId = pass2LoopId;
+                    recordStep(41, `2nd Pass (Yellow Check): Set <code>i = ${idx}</code>.`, {
+                        flowTargetId: 'iBadgeContainer',
+                        flowSecondaryTargetId: `col-header-${idx}`,
+                        flowLabel: `i = ${idx}`,
+                        flowColor: 'indigo',
+                        focusSection: 'iBadgeContainer',
+                        deltaBadge: { id: 'badge-i', text: `i = ${idx}` }
+                    });
+
+                    const currentRes = state.result[idx];
+                    const isB = currentRes === "B";
+                    recordStep(43, `Check <code>if result[${idx}] == "B"</code>: Currently <code>"${currentRes}"</code> → <strong>${isB ? 'True' : 'False (Skip Green)'}</strong>.`, {
+                        flowTargetId: `result-cell-${idx}`,
+                        flowLabel: isB ? `== "B" ✓` : `is "G" (skip)`,
+                        flowColor: isB ? 'amber' : 'emerald',
+                        focusSection: 'row-result'
+                    });
+
+                    if (isB) {
+                        const gChar = state.guess[idx];
+                        const foundIdx = state.remainingLetters.indexOf(gChar);
+                        const inRem = foundIdx !== -1;
+
+                        recordStep(45, `Check <code>if '${gChar}' in remaining_letters</code>: <strong>${inRem ? `True (Found '${gChar}')` : 'False'}</strong>.`, {
+                            remainingHighlight: inRem ? { type: 'checked', index: foundIdx, char: gChar } : null,
+                            flowTargetId: inRem ? `rem-cell-${foundIdx}` : 'row-remaining',
+                            flowSecondaryTargetId: `guess-cell-${idx}`,
+                            flowDirection: 'from-secondary',
+                            flowLabel: inRem ? `'${gChar}' in pool ✓` : `'${gChar}' not in pool`,
+                            flowColor: inRem ? 'amber' : 'indigo',
+                            focusSection: 'row-remaining'
+                        });
+
+                        if (inRem) {
+                            state.result[idx] = "Y";
+                            recordStep(46, `Update <code>result[${idx}] = "Y"</code> (Yellow).`, {
+                                resultHighlightIndex: idx,
+                                flowTargetId: `result-cell-${idx}`,
+                                flowLabel: `result[${idx}] = "Y"`,
+                                flowColor: 'amber',
+                                focusSection: 'row-result',
+                                deltaBadge: { id: 'badge-result', text: `B → Y` }
+                            });
+
+                            state.remainingLetters.splice(foundIdx, 1);
+                            recordStep(47, `Remove <strong>'${gChar}'</strong> from <code>remaining_letters</code>.`, {
+                                remainingHighlight: { type: 'removed', char: gChar, removedFromIndex: foundIdx },
+                                flowTargetId: `rem-cell-${state.remainingLetters.length}`,
+                                flowLabel: `.remove('${gChar}')`,
+                                flowColor: 'rose',
+                                focusSection: 'row-remaining',
+                                deltaBadge: { id: 'badge-remaining', text: `- '${gChar}'` }
+                            });
+                        }
+                    }
+                }
+                state.loopId = null;
+                state.i = null;
+
+                // Line 50: result_str = "Result:"
+                state.resultStr = "Result:";
+                recordStep(50, `Initialize <code>result_str = "Result:"</code>.`, {
+                    flowTargetId: 'row-result-str',
+                    flowLabel: `"Result:"`,
+                    flowColor: 'indigo',
+                    focusSection: 'row-result-str',
+                    deltaBadge: { id: 'badge-result-str', text: 'INIT' }
+                });
+
+                // Loop 4: Build result_str
+                const formatLoopId = `attempt-${state.attempt}-format`;
+                for (let idx = 0; idx < 5; idx++) {
+                    state.i = idx;
+                    state.loopId = formatLoopId;
+                    recordStep(51, `Build String Loop: Set <code>i = ${idx}</code>.`, {
+                        flowTargetId: `result-cell-${idx}`,
+                        flowLabel: `i = ${idx}`,
+                        flowColor: 'indigo',
+                        focusSection: 'row-result'
+                    });
+
+                    const r = state.result[idx];
+                    const ch = state.guess[idx];
+
+                    recordStep(53, `Check <code>if result[${idx}] == "G"</code>: <strong>${r === 'G' ? 'True' : 'False'}</strong>.`, {
+                        flowTargetId: `result-cell-${idx}`,
+                        flowLabel: r === 'G' ? '== "G" ✓' : 'False',
+                        flowColor: r === 'G' ? 'emerald' : 'indigo'
+                    });
+                    if (r === "G") {
+                        state.resultStr = `${state.resultStr} [${ch}]`;
+                        recordStep(55, `Append <code>"[${ch}]"</code> to <code>result_str</code>.`, {
+                            flowTargetId: 'row-result-str',
+                            flowLabel: `+ "[${ch}]"`,
+                            flowColor: 'emerald',
+                            focusSection: 'row-result-str',
+                            deltaBadge: { id: 'badge-result-str', text: `+ "[${ch}]"` }
+                        });
+                    }
+
+                    recordStep(57, `Check <code>if result[${idx}] == "Y"</code>: <strong>${r === 'Y' ? 'True' : 'False'}</strong>.`, {
+                        flowTargetId: `result-cell-${idx}`,
+                        flowLabel: r === 'Y' ? '== "Y" ✓' : 'False',
+                        flowColor: r === 'Y' ? 'amber' : 'indigo'
+                    });
+                    if (r === "Y") {
+                        state.resultStr = `${state.resultStr} (${ch})`;
+                        recordStep(59, `Append <code>"(${ch})"</code> to <code>result_str</code>.`, {
+                            flowTargetId: 'row-result-str',
+                            flowLabel: `+ "(${ch})"`,
+                            flowColor: 'amber',
+                            focusSection: 'row-result-str',
+                            deltaBadge: { id: 'badge-result-str', text: `+ "(${ch})"` }
+                        });
+                    }
+
+                    recordStep(61, `Check <code>if result[${idx}] == "B"</code>: <strong>${r === 'B' ? 'True' : 'False'}</strong>.`, {
+                        flowTargetId: `result-cell-${idx}`,
+                        flowLabel: r === 'B' ? '== "B" ✓' : 'False',
+                        flowColor: 'indigo'
+                    });
+                    if (r === "B") {
+                        state.resultStr = `${state.resultStr} ${ch}`;
+                        recordStep(62, `Append <code>" ${ch}"</code> to <code>result_str</code>.`, {
+                            flowTargetId: 'row-result-str',
+                            flowLabel: `+ " ${ch}"`,
+                            flowColor: 'indigo',
+                            focusSection: 'row-result-str',
+                            deltaBadge: { id: 'badge-result-str', text: `+ " ${ch}"` }
+                        });
+                    }
+                }
+                state.loopId = null;
+                state.i = null;
+
+                // Line 65: print(result_str)
+                state.consoleLines.push({ type: 'result', text: state.resultStr });
+                const resLineIdx = state.consoleLines.length - 1;
+                recordStep(65, `Print <code>result_str</code> directly to a new line in the Console.`, {
+                    consoleHighlightIndex: resLineIdx,
+                    flowTargetId: `console-line-${resLineIdx}`,
+                    flowSecondaryTargetId: 'row-result-str',
+                    flowDirection: 'from-secondary',
+                    flowLabel: 'print(result_str)',
+                    flowColor: 'emerald',
+                    focusSection: 'terminal-card'
+                });
+
+                // Line 68: if secret_word == guess:
+                const isWin = state.secretWord === state.guess;
+                recordStep(68, `Check <code>if secret_word == guess</code>: Is <strong>"${state.secretWord}" == "${state.guess}"</strong>? <strong>${isWin ? 'True!' : 'False'}</strong>.`, {
+                    flowTargetId: 'row-guess',
+                    flowSecondaryTargetId: 'row-secret-word',
+                    flowLabel: isWin ? 'EQUAL ✓' : 'NOT EQUAL',
+                    flowColor: isWin ? 'emerald' : 'indigo',
+                    focusSection: 'row-guess'
+                });
+
+                if (isWin) {
+                    state.consoleLines.push({ type: 'win', text: `Congratulations! You guessed the word in ${state.attempt + 1} tries!` });
+                    const winLineIdx = state.consoleLines.length - 1;
+                    recordStep(69, `Print congratulations message to the Console.`, {
+                        consoleHighlightIndex: winLineIdx,
+                        flowTargetId: `console-line-${winLineIdx}`,
+                        flowLabel: 'print()',
+                        flowColor: 'emerald',
+                        focusSection: 'terminal-card'
+                    });
+                    recordStep(70, `Execute <code>break</code> to exit the loop and end the program.`);
+                    break;
+                }
+
+                // Line 73: if attempt == NUM_ATTEMPTS - 1:
+                const isLast = state.attempt === state.numAttempts - 1;
+                recordStep(73, `Check <code>if attempt == NUM_ATTEMPTS - 1</code> (is <code>${state.attempt} == 5</code>?): <strong>${isLast ? 'True' : 'False'}</strong>.`, {
+                    flowTargetId: 'card-attempt',
+                    flowLabel: `${state.attempt} == 5 (${isLast ? 'True' : 'False'})`,
+                    flowColor: isLast ? 'rose' : 'indigo',
+                    focusSection: 'card-attempt'
+                });
+                if (isLast) {
+                    state.consoleLines.push({ type: 'error', text: `Better luck next time! The correct word was '${state.secretWord}'.` });
+                    const loseLineIdx = state.consoleLines.length - 1;
+                    recordStep(74, `Print game over message to the Console.`, {
+                        consoleHighlightIndex: loseLineIdx,
+                        flowTargetId: `console-line-${loseLineIdx}`,
+                        flowLabel: 'print()',
+                        flowColor: 'rose',
+                        focusSection: 'terminal-card'
+                    });
+                }
+
+                attemptCounter++;
+            }
+
+            return trace;
+        }
+
+        // ============================================================================
+        // 5. RENDER STEP TO 3-COLUMN UI (With Exact Console Line Targeting)
+        // ============================================================================
+        function renderStep(index) {
+            if (!steps.length) return;
+            currentStepIndex = Math.max(0, Math.min(index, steps.length - 1));
+            const snap = steps[currentStepIndex];
+            const prevSnap = currentStepIndex > 0 ? steps[currentStepIndex - 1] : null;
+
+            // 1. Header Step Counter & Controls
+            document.getElementById('stepCounterText').textContent = `Step ${currentStepIndex + 1}/${steps.length}`;
+            document.getElementById('btnReset').disabled = currentStepIndex === 0;
+            document.getElementById('btnBack').disabled = currentStepIndex === 0;
+            document.getElementById('btnForward').disabled = currentStepIndex === steps.length - 1;
+            document.getElementById('btnSkipLoop').disabled = !snap.loopId;
+
+            const hasNextAttempt = steps.slice(currentStepIndex + 1).some(s => s.isLoopRestart);
+            document.getElementById('btnNextAttempt').disabled = !hasNextAttempt;
+
+            // 2. Highlight Active Code Line & Auto-Scroll Centered inside Left Panel
+            CODE_LINES.forEach(item => {
+                const row = document.getElementById(`code-line-${item.line}`);
+                const arrow = document.getElementById(`arrow-line-${item.line}`);
+                row.classList.remove('code-line-active', 'code-line-prev');
+                arrow.classList.add('opacity-0');
+
+                if (item.line === snap.line) {
+                    row.classList.add('code-line-active');
+                    arrow.classList.remove('opacity-0');
+                    const cc = document.getElementById('codeContainer');
+                    cc.scrollTo({ top: row.offsetTop - (cc.clientHeight - row.offsetHeight) / 2, behavior: 'smooth' });
+                } else if (prevSnap && item.line === prevSnap.line) {
+                    row.classList.add('code-line-prev');
+                }
+            });
+
+            // 3. Pinned Explanation Banner
+            document.getElementById('currentLineBadge').textContent = `Line ${snap.line}`;
+            document.getElementById('explanationText').innerHTML = snap.explanation;
+            const expBanner = document.getElementById('explanationBanner');
+            const loopBanner = document.getElementById('loopRestartBanner');
+            if (snap.isLoopRestart) {
+                expBanner.className = 'p-3 bg-purple-100/90 border-b border-purple-300 shrink-0 transition-colors duration-200';
+                loopBanner.classList.remove('hidden');
+            } else {
+                expBanner.className = 'p-3 bg-indigo-50/90 border-b border-indigo-100 shrink-0 transition-colors duration-200';
+                loopBanner.classList.add('hidden');
+            }
+
+            // 4. Progressive Scalar Variables (Unset Dashed -> Created Solid)
+            const cardNumAttempts = document.getElementById('card-num-attempts');
+            const varNumAttemptsEl = document.getElementById('varNumAttempts');
+            if (snap.numAttempts !== null) {
+                cardNumAttempts.className = 'relative px-2.5 py-1.5 rounded-lg bg-slate-100 border-2 border-slate-300 flex items-center justify-between transition-all';
+                varNumAttemptsEl.textContent = snap.numAttempts;
+                varNumAttemptsEl.className = 'text-sm font-mono-code font-extrabold text-slate-900';
+            } else {
+                cardNumAttempts.className = 'relative px-2.5 py-1.5 rounded-lg bg-slate-50 border-2 border-dashed border-slate-300 flex items-center justify-between transition-all';
+                varNumAttemptsEl.textContent = 'unset';
+                varNumAttemptsEl.className = 'text-xs font-mono-code font-bold text-slate-400 italic';
+            }
+
+            const cardAttempt = document.getElementById('card-attempt');
+            const varAttemptEl = document.getElementById('varAttempt');
+            const attemptHumanBadge = document.getElementById('attemptHumanBadge');
+            if (snap.attempt !== null) {
+                cardAttempt.className = 'relative px-2.5 py-1.5 rounded-lg bg-purple-100 border-2 border-purple-300 flex items-center justify-between transition-all';
+                varAttemptEl.textContent = snap.attempt;
+                varAttemptEl.className = 'text-sm font-mono-code font-extrabold text-purple-900';
+                attemptHumanBadge.textContent = `#${snap.attempt + 1}`;
+                attemptHumanBadge.classList.remove('hidden');
+            } else {
+                cardAttempt.className = 'relative px-2.5 py-1.5 rounded-lg bg-purple-50/60 border-2 border-dashed border-purple-200 flex items-center justify-between transition-all';
+                varAttemptEl.textContent = 'unset';
+                varAttemptEl.className = 'text-xs font-mono-code font-bold text-purple-400 italic';
+                attemptHumanBadge.classList.add('hidden');
+            }
+
+            // FIX: show the value of i (this card was never updated before)
+            const cardI = document.getElementById('iBadgeContainer');
+            const varIEl = document.getElementById('varI');
+            if (snap.i !== null && snap.i !== undefined) {
+                cardI.className = 'relative px-2.5 py-1.5 rounded-lg bg-blue-100 border-2 border-blue-300 flex items-center justify-between transition-all';
+                varIEl.textContent = snap.i;
+                varIEl.className = 'text-sm font-mono-code font-extrabold text-blue-900';
+            } else {
+                cardI.className = 'relative px-2.5 py-1.5 rounded-lg bg-blue-50/60 border-2 border-dashed border-blue-200 flex items-center justify-between transition-all';
+                varIEl.textContent = 'unset';
+                varIEl.className = 'text-xs font-mono-code font-bold text-blue-400 italic';
+            }
+
+            const isInvalidGuess = snap.guess && snap.guess.length !== 5;
+            const guessLenBadge = document.getElementById('guessLenBadge');
+            if (snap.guess === null) {
+                guessLenBadge.textContent = 'str (unset)';
+                guessLenBadge.className = 'text-[10px] font-mono-code text-slate-400 block';
+            } else if (isInvalidGuess) {
+                guessLenBadge.textContent = `str • len=${snap.guess.length} (!= 5)`;
+                guessLenBadge.className = 'text-[10px] font-mono-code font-bold text-rose-600 block';
+            } else {
+                guessLenBadge.textContent = 'str • len=5';
+                guessLenBadge.className = 'text-[10px] font-mono-code font-semibold text-indigo-600 block';
+            }
+
+            // Build secret_word cohesive string capsule
+            let secretCharsInner = '';
+            for (let col = 0; col < 5; col++) {
+                const isColActive = snap.i === col;
+                const sChar = snap.secretWord ? snap.secretWord[col] : '';
+                if (snap.secretWord) {
+                    secretCharsInner += `<div id="secret-cell-${col}" class="cell-box flex items-center justify-center font-mono-code text-base font-extrabold transition-all ${
+                        col < 4 ? 'border-r border-indigo-100/80' : ''
+                    } ${
+                        isColActive
+                            ? 'bg-blue-600 text-white rounded-md scale-105 shadow-sm z-10'
+                            : 'text-slate-800'
+                    }">${sChar}</div>`;
+                } else {
+                    secretCharsInner += `<div id="secret-cell-${col}" class="cell-box flex items-center justify-center font-mono-code text-xs text-slate-300 ${
+                        col < 4 ? 'border-r border-slate-100' : ''
+                    }">·</div>`;
+                }
+            }
+            const secretHtml = `
+                <span class="w-4 text-center font-mono-code text-lg font-extrabold ${snap.secretWord ? 'text-indigo-500' : 'text-slate-300'} select-none">"</span>
+                <div class="flex items-center gap-1.5 rounded-lg border-2 ${
+                    snap.secretWord ? 'bg-indigo-50/40 border-indigo-300 shadow-2xs' : 'bg-white border-dashed border-slate-200'
+                } px-0.5">
+                    ${secretCharsInner}
+                </div>
+                <span class="w-4 text-center font-mono-code text-lg font-extrabold ${snap.secretWord ? 'text-indigo-500' : 'text-slate-300'} select-none">"</span>
+            `;
+
+            // Build guess cohesive string capsule
+            let guessCharsInner = '';
+            for (let col = 0; col < 5; col++) {
+                const isColActive = snap.i === col;
+                const gChar = snap.guess && col < snap.guess.length ? snap.guess[col] : '';
+                if (snap.guess !== null) {
+                    guessCharsInner += `<div id="guess-cell-${col}" class="cell-box flex items-center justify-center font-mono-code text-base font-extrabold transition-all ${
+                        col < 4 ? 'border-r border-indigo-100/80' : ''
+                    } ${
+                        isInvalidGuess
+                            ? 'text-rose-900 bg-rose-50/80'
+                            : isColActive
+                                ? 'bg-blue-600 text-white rounded-md scale-105 shadow-sm z-10'
+                                : 'text-slate-800'
+                    }">${gChar}</div>`;
+                } else {
+                    guessCharsInner += `<div id="guess-cell-${col}" class="cell-box flex items-center justify-center font-mono-code text-xs text-slate-300 ${
+                        col < 4 ? 'border-r border-slate-100' : ''
+                    }">·</div>`;
+                }
+            }
+            const guessHtml = `
+                <span class="w-4 text-center font-mono-code text-lg font-extrabold ${
+                    snap.guess === null ? 'text-slate-300' : isInvalidGuess ? 'text-rose-500' : 'text-indigo-500'
+                } select-none">"</span>
+                <div class="flex items-center gap-1.5 rounded-lg border-2 ${
+                    snap.guess === null
+                        ? 'bg-white border-dashed border-slate-200'
+                        : isInvalidGuess
+                            ? 'bg-rose-50 border-rose-400'
+                            : 'bg-indigo-50/40 border-indigo-300 shadow-2xs'
+                } px-0.5">
+                    ${guessCharsInner}
+                </div>
+                <span class="w-4 text-center font-mono-code text-lg font-extrabold ${
+                    snap.guess === null ? 'text-slate-300' : isInvalidGuess ? 'text-rose-500' : 'text-indigo-500'
+                } select-none">"</span>
+            `;
+
+            let cmpHtml = '';
+            let resultHtml = '';
+            for (let col = 0; col < 5; col++) {
+                // comparison operator cell
+                if (snap.activeComparison && snap.activeComparison.index === col) {
+                    cmpHtml += snap.activeComparison.equal
+                        ? `<div id="cmp-cell-${col}" class="w-[42px] text-center font-mono-code text-[11px] font-extrabold rounded bg-emerald-100 text-emerald-800 border border-emerald-400 animate-pop">==</div>`
+                        : `<div id="cmp-cell-${col}" class="w-[42px] text-center font-mono-code text-[11px] font-extrabold rounded bg-rose-100 text-rose-800 border border-rose-400 animate-pop">!=</div>`;
+                } else {
+                    cmpHtml += `<div id="cmp-cell-${col}" class="w-[42px] text-center font-mono-code text-[11px] text-slate-300">↕</div>`;
+                }
+
+                // result list cell (individual boxes inside [ ])
+                const rVal = snap.result && col < snap.result.length ? snap.result[col] : null;
+                const popClass = snap.resultHighlightIndex === col ? 'mutation-cell-pop' : '';
+                if (rVal === 'G') {
+                    resultHtml += `<div id="result-cell-${col}" class="cell-box rounded-lg flex flex-col items-center justify-center font-mono-code font-extrabold bg-emerald-500 text-white border-2 border-emerald-600 shadow-xs ${popClass}">
+                        <span class="text-xs leading-none">"G"</span>
+                        <span class="text-[8px] font-sans opacity-90">Green</span>
+                    </div>`;
+                } else if (rVal === 'Y') {
+                    resultHtml += `<div id="result-cell-${col}" class="cell-box rounded-lg flex flex-col items-center justify-center font-mono-code font-extrabold bg-amber-400 text-amber-950 border-2 border-amber-500 shadow-xs ${popClass}">
+                        <span class="text-xs leading-none">"Y"</span>
+                        <span class="text-[8px] font-sans font-bold opacity-90">Yellow</span>
+                    </div>`;
+                } else if (rVal === 'B') {
+                    resultHtml += `<div id="result-cell-${col}" class="cell-box rounded-lg flex flex-col items-center justify-center font-mono-code font-extrabold bg-slate-300 text-slate-800 border-2 border-slate-400 ${popClass}">
+                        <span class="text-xs leading-none">"B"</span>
+                        <span class="text-[8px] font-sans opacity-75">Gray</span>
+                    </div>`;
+                } else {
+                    resultHtml += `<div id="result-cell-${col}" class="cell-box rounded-lg flex items-center justify-center font-mono-code text-[10px] text-slate-300 border border-dashed border-slate-200 bg-white">·</div>`;
+                }
+            }
+
+            document.getElementById('secretWordRow').innerHTML = secretHtml;
+            document.getElementById('comparisonRow').innerHTML = cmpHtml;
+            document.getElementById('guessWordRow').innerHTML = guessHtml;
+            document.getElementById('resultListRow').innerHTML = resultHtml;
+
+            // 8. Render remaining_letters on a SINGLE Non-Wrapping 5-Slot Row with Cell IDs
+            const remRow = document.getElementById('remainingLettersRow');
+            const remBadge = document.getElementById('remainingActionBadge');
+
+            if (snap.remainingHighlight) {
+                if (snap.remainingHighlight.type === 'added') {
+                    remBadge.textContent = `+ Appended '${snap.remainingHighlight.char}'`;
+                    remBadge.className = 'text-[10px] font-extrabold text-emerald-700 block truncate';
+                } else if (snap.remainingHighlight.type === 'removed') {
+                    remBadge.textContent = `✂️ Removed '${snap.remainingHighlight.char}'`;
+                    remBadge.className = 'text-[10px] font-extrabold text-rose-700 block truncate';
+                } else if (snap.remainingHighlight.type === 'checked') {
+                    remBadge.textContent = `🔍 Found '${snap.remainingHighlight.char}'!`;
+                    remBadge.className = 'text-[10px] font-extrabold text-amber-900 block truncate';
+                }
+            } else {
+                remBadge.textContent = snap.remainingLetters === null ? 'Not initialized' : `${snap.remainingLetters.length} letter(s) left`;
+                remBadge.className = 'text-[10px] font-semibold text-amber-700/80 block truncate';
+            }
+
+            let remSlotsHtml = '';
+            for (let slot = 0; slot < 5; slot++) {
+                if (snap.remainingLetters !== null && slot < snap.remainingLetters.length) {
+                    const ch = snap.remainingLetters[slot];
+                    const isAdded = snap.remainingHighlight?.type === 'added' && snap.remainingHighlight.index === slot;
+                    const isChecked = snap.remainingHighlight?.type === 'checked' && snap.remainingHighlight.index === slot;
+
+                    remSlotsHtml += `<div id="rem-cell-${slot}" class="cell-box rounded-lg flex items-center justify-center font-mono-code text-sm font-extrabold border-2 transition-all ${
+                        isAdded
+                            ? 'bg-emerald-100 border-emerald-500 text-emerald-950 mutation-cell-pop'
+                            : isChecked
+                                ? 'bg-amber-300 border-amber-600 text-amber-950 mutation-cell-pop'
+                                : 'bg-white border-amber-300 text-amber-950'
+                    }">'${ch}'</div>`;
+                } else if (
+                    snap.remainingHighlight?.type === 'removed' &&
+                    snap.remainingLetters !== null &&
+                    slot === snap.remainingLetters.length
+                ) {
+                    remSlotsHtml += `<div id="rem-cell-${slot}" class="cell-box rounded-lg flex items-center justify-center font-mono-code text-sm font-extrabold border-2 animate-removing">'${snap.remainingHighlight.char}'</div>`;
+                } else {
+                    remSlotsHtml += `<div id="rem-cell-${slot}" class="cell-box rounded-lg flex items-center justify-center font-mono-code text-[10px] text-amber-300/70 border border-dashed border-amber-200 bg-white/50">·</div>`;
+                }
+            }
+            remRow.innerHTML = remSlotsHtml;
+
+            // 9. Render result_str Live String Builder
+            const resStrEl = document.getElementById('resultStrContainer');
+            if (snap.resultStr === null) {
+                resStrEl.innerHTML = `<span class="text-xs font-normal text-slate-400 italic font-sans">Not initialized yet</span>`;
+            } else {
+                resStrEl.innerHTML = `<span>"${escapeHtml(snap.resultStr)}"</span>`;
+            }
+
+            // 10. Render Right-Column Console Output (Each line gets #console-line-idx for exact arrows)
+            const consoleEl = document.getElementById('consoleOutput');
+            if (snap.consoleLines.length === 0) {
+                consoleEl.innerHTML = `<div class="text-slate-500 italic text-[11px]">Console is empty...</div>`;
+            } else {
+                consoleEl.innerHTML = snap.consoleLines.map((item, idx) => {
+                    const isActiveLine = snap.consoleHighlightIndex === idx;
+                    const activeRing = isActiveLine
+                        ? 'ring-2 ring-emerald-400 bg-slate-800/95 shadow-md animate-pop'
+                        : 'bg-slate-800/40 opacity-85';
+
+                    if (item.type === 'input') {
+                        return `<div id="console-line-${idx}" class="px-2.5 py-1.5 rounded-lg border border-slate-700 flex items-center justify-between transition-all ${
+                            isActiveLine ? 'ring-2 ring-rose-400 bg-slate-800 shadow-md animate-pop' : 'bg-slate-800/40 opacity-85'
+                        }">
+                            <div>
+                                <span class="text-slate-400">${escapeHtml(item.prompt)}</span>
+                                <span class="text-amber-300 font-extrabold underline decoration-amber-400/60">${escapeHtml(item.typed)}</span>
+                            </div>
+                            <span class="text-[9px] font-sans font-bold uppercase px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-400/30">input()</span>
+                        </div>`;
+                    } else if (item.type === 'error') {
+                        return `<div id="console-line-${idx}" class="px-2.5 py-1.5 rounded-lg border border-amber-500/40 text-amber-300 flex items-center justify-between transition-all ${activeRing}">
+                            <span>${escapeHtml(item.text)}</span>
+                            <span class="text-[9px] font-sans font-bold uppercase px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">print()</span>
+                        </div>`;
+                    } else if (item.type === 'result') {
+                        return `<div id="console-line-${idx}" class="px-2.5 py-1.5 rounded-lg border border-emerald-500/40 text-emerald-300 font-bold flex items-center justify-between transition-all ${activeRing}">
+                            <span>${escapeHtml(item.text)}</span>
+                            <span class="text-[9px] font-sans font-bold uppercase px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">print()</span>
+                        </div>`;
+                    } else if (item.type === 'win') {
+                        return `<div id="console-line-${idx}" class="px-2.5 py-1.5 rounded-lg border border-yellow-400/50 text-yellow-300 font-bold flex items-center justify-between transition-all ${activeRing}">
+                            <span>🎉 ${escapeHtml(item.text)}</span>
+                            <span class="text-[9px] font-sans font-bold uppercase px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-200">print()</span>
+                        </div>`;
+                    }
+                    return `<div id="console-line-${idx}" class="px-2.5 py-1.5 rounded-lg border border-slate-700 text-slate-100 flex items-center justify-between transition-all ${activeRing}">
+                        <span>${escapeHtml(item.text)}</span>
+                        <span class="text-[9px] font-sans font-bold uppercase px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">print()</span>
+                    </div>`;
+                }).join('');
+                consoleEl.scrollTop = consoleEl.scrollHeight;
+            }
+
+            // 11. Apply Row Spotlight, Dimming & Floating Delta Badges
+            applyMutationSpotlightAndBadges(snap);
+
+            // 12. Draw SVG Bezier Data-Flow Connector Arrow (immediately + after smooth scroll settles)
+            requestAnimationFrame(() => drawDataFlowArrow(snap));
+            setTimeout(() => drawDataFlowArrow(snap), 160);
+        }
+
+        // ============================================================================
+        // 5B. SPOTLIGHT, FLOATING DELTA BADGES & SVG BEZIER ARROW ENGINE
+        // ============================================================================
+        const ALL_FOCUSABLE_SECTIONS = [
+            'card-num-attempts',
+            'card-attempt',
+            'iBadgeContainer',
+            'row-secret-word',
+            'row-comparison',
+            'row-guess',
+            'row-result',
+            'row-remaining',
+            'row-result-str',
+            'terminal-card'
+        ];
+
+        const ALL_DELTA_BADGES = [
+            'badge-num-attempts',
+            'badge-attempt',
+            'badge-i',
+            'badge-secret-word',
+            'badge-guess',
+            'badge-result',
+            'badge-remaining',
+            'badge-result-str'
+        ];
+
+        function applyMutationSpotlightAndBadges(snap) {
+            // Reset all floating delta badges
+            ALL_DELTA_BADGES.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.classList.add('hidden');
+            });
+
+            // Show current step's floating delta badge if present
+            if (snap.deltaBadge && snap.deltaBadge.id) {
+                const badgeEl = document.getElementById(snap.deltaBadge.id);
+                if (badgeEl) {
+                    badgeEl.textContent = snap.deltaBadge.text;
+                    badgeEl.classList.remove('hidden');
+                }
+            }
+
+            // Reset & apply row spotlight vs subtle dimming
+            ALL_FOCUSABLE_SECTIONS.forEach(secId => {
+                const el = document.getElementById(secId);
+                if (!el) return;
+                el.classList.remove('mutation-spotlight', 'row-dimmed', 'row-focused');
+
+                if (snap.focusSection) {
+                    if (secId === snap.focusSection) {
+                        el.classList.add('row-focused');
+                        if (secId !== 'terminal-card') {
+                            el.classList.add('mutation-spotlight');
+                        }
+                    } else if (secId !== 'terminal-card') {
+                        el.classList.add('row-dimmed');
+                    }
+                }
+            });
+        }
+
+        function drawDataFlowArrow(snap) {
+            const svgGroup = document.getElementById('flow-arrows-group');
+            const actionPill = document.getElementById('flow-action-pill');
+            if (!svgGroup || !actionPill) return;
+
+            if (!snap || !snap.flowTargetId) {
+                svgGroup.innerHTML = '';
+                actionPill.classList.add('hidden');
+                return;
+            }
+
+            const codeLineEl = document.getElementById(`code-line-${snap.line}`);
+            const targetEl = document.getElementById(snap.flowTargetId);
+            if (!codeLineEl || !targetEl) {
+                svgGroup.innerHTML = '';
+                actionPill.classList.add('hidden');
+                return;
+            }
+
+            const codeRect = codeLineEl.getBoundingClientRect();
+            const targetRect = targetEl.getBoundingClientRect();
+
+            // Start anchor: right edge of the active code line
+            const codeContainerRect = document.getElementById('codeContainer').getBoundingClientRect();
+            const startX = Math.min(codeRect.right - 12, codeContainerRect.right - 8);
+            const startY = codeRect.top + codeRect.height / 2;
+
+            // End anchor: left-center of target element (whether variable card, cell, or exact console line)
+            const endX = targetRect.left + 4;
+            const endY = targetRect.top + targetRect.height / 2;
+
+            // Color palette
+            const colorMap = {
+                rose:    { hex: '#e11d48', marker: 'url(#arrow-head-rose)',    pillBg: 'bg-rose-600' },
+                emerald: { hex: '#059669', marker: 'url(#arrow-head-emerald)', pillBg: 'bg-emerald-600' },
+                indigo:  { hex: '#4f46e5', marker: 'url(#arrow-head-indigo)',  pillBg: 'bg-indigo-600' },
+                amber:   { hex: '#d97706', marker: 'url(#arrow-head-amber)',   pillBg: 'bg-amber-600' },
+                purple:  { hex: '#9333ea', marker: 'url(#arrow-head-purple)',  pillBg: 'bg-purple-600' }
+            };
+            const theme = colorMap[snap.flowColor] || colorMap.rose;
+
+            // Compute smooth S-curve cubic Bezier control points
+            const dx = Math.max(60, Math.abs(endX - startX) * 0.45);
+            const cp1X = startX + dx;
+            const cp1Y = startY;
+            const cp2X = endX - dx;
+            const cp2Y = endY;
+
+            const pathData = `M ${startX} ${startY} C ${cp1X} ${cp1Y}, ${cp2X} ${cp2Y}, ${endX} ${endY}`;
+
+            let pathsHtml = `
+                <path d="${pathData}" fill="none" stroke="white" stroke-width="6" stroke-linecap="round" opacity="0.85" />
+                <path d="${pathData}" fill="none" stroke="${theme.hex}" stroke-width="3" stroke-linecap="round" opacity="0.35" />
+                <path d="${pathData}" fill="none" stroke="${theme.hex}" stroke-width="3" stroke-linecap="round" class="flow-arrow-animated" marker-end="${theme.marker}" />
+                <circle cx="${startX}" cy="${startY}" r="5" fill="${theme.hex}" stroke="white" stroke-width="2" />
+            `;
+
+            // Secondary data-flow arrow (e.g., Console input() line -> guess row, or result_str -> Console print() line)
+            if (snap.flowSecondaryTargetId) {
+                const secEl = document.getElementById(snap.flowSecondaryTargetId);
+                if (secEl) {
+                    const secRect = secEl.getBoundingClientRect();
+                    const sX = secRect.left + secRect.width / 2;
+                    const sY = secRect.top + secRect.height / 2;
+                    const tX = targetRect.left + targetRect.width / 2;
+                    const tY = targetRect.top + targetRect.height / 2;
+                    const midX = (sX + tX) / 2;
+                    const midY = Math.min(sY, tY) - 28;
+                    const secPath = `M ${sX} ${sY} Q ${midX} ${midY}, ${tX} ${tY}`;
+                    pathsHtml += `
+                        <path d="${secPath}" fill="none" stroke="white" stroke-width="5" stroke-linecap="round" opacity="0.8" />
+                        <path d="${secPath}" fill="none" stroke="${theme.hex}" stroke-width="2.5" stroke-dasharray="6 4" class="flow-arrow-animated" marker-end="${theme.marker}" opacity="0.9" />
+                        <circle cx="${sX}" cy="${sY}" r="4.5" fill="${theme.hex}" stroke="white" stroke-width="1.5" />
+                    `;
+                }
+            }
+
+            // Vertical Loop-Back Arc inside the code panel when wrapping from Line 73 back up to Line 13
+            if (snap.isLoopRestart) {
+                const bottomLineEl = document.getElementById('code-line-73');
+                if (bottomLineEl) {
+                    const bRect = bottomLineEl.getBoundingClientRect();
+                    const arcStartX = codeRect.left + 26;
+                    const arcStartY = Math.min(bRect.top + bRect.height / 2, codeContainerRect.bottom - 14);
+                    const arcEndX = codeRect.left + 26;
+                    const arcEndY = codeRect.top + codeRect.height / 2;
+                    const arcCtrlX = Math.max(8, codeRect.left - 34);
+                    const loopArcPath = `M ${arcStartX} ${arcStartY} C ${arcCtrlX} ${arcStartY}, ${arcCtrlX} ${arcEndY}, ${arcEndX} ${arcEndY}`;
+                    pathsHtml += `
+                        <path d="${loopArcPath}" fill="none" stroke="white" stroke-width="6" stroke-linecap="round" opacity="0.9" />
+                        <path d="${loopArcPath}" fill="none" stroke="#9333ea" stroke-width="3.5" stroke-linecap="round" class="flow-arrow-animated" marker-end="url(#arrow-head-purple)" />
+                        <circle cx="${arcStartX}" cy="${arcStartY}" r="4.5" fill="#9333ea" stroke="white" stroke-width="1.5" />
+                    `;
+                }
+            }
+
+            svgGroup.innerHTML = pathsHtml;
+
+            // Position the floating action label pill near the midpoint of the Bezier curve
+            if (snap.flowLabel) {
+                const midX = 0.125 * startX + 0.375 * cp1X + 0.375 * cp2X + 0.125 * endX;
+                const midY = 0.125 * startY + 0.375 * cp1Y + 0.375 * cp2Y + 0.125 * endY;
+                actionPill.textContent = snap.flowLabel;
+                actionPill.className = `fixed pointer-events-none z-50 px-2.5 py-0.5 rounded-full text-[11px] font-mono-code font-extrabold text-white shadow-md border border-white/60 ${theme.pillBg}`;
+                actionPill.style.left = `${midX}px`;
+                actionPill.style.top = `${midY - 14}px`;
+                actionPill.style.transform = 'translate(-50%, -50%)';
+            } else {
+                actionPill.classList.add('hidden');
+            }
+        }
+
+        // ============================================================================
+        // 6. PLAYBACK & PRESET CONTROLLERS (Clean & Minimal)
+        // ============================================================================
+        function stepForward() {
+            if (currentStepIndex < steps.length - 1) {
+                renderStep(currentStepIndex + 1);
+            }
+        }
+
+        function stepBack() {
+            if (currentStepIndex > 0) {
+                renderStep(currentStepIndex - 1);
+            }
+        }
+
+        function resetToStart() {
+            renderStep(0);
+        }
+
+        function skipCurrentLoop() {
+            const currentLoop = steps[currentStepIndex]?.loopId;
+            if (!currentLoop) return;
+            let nextIdx = currentStepIndex + 1;
+            while (nextIdx < steps.length && steps[nextIdx].loopId === currentLoop) {
+                nextIdx++;
+            }
+            renderStep(Math.min(nextIdx, steps.length - 1));
+        }
+
+        function jumpToNextAttempt() {
+            for (let idx = currentStepIndex + 1; idx < steps.length; idx++) {
+                if (steps[idx].isLoopRestart) {
+                    renderStep(idx);
+                    return;
+                }
+            }
+        }
+
+        function loadPreset(key) {
+            const preset = PRESETS[key];
+            if (!preset) return;
+
+            currentScenario = {
+                secret: preset.secret,
+                guesses: [...preset.guesses],
+                startAttempt: preset.startAttempt || 0
+            };
+
+            document.querySelectorAll('.preset-btn').forEach(btn => {
+                btn.className = 'preset-btn text-xs font-semibold px-2.5 py-1.5 rounded-md bg-slate-100 text-slate-700 hover:bg-slate-200 transition whitespace-nowrap';
+            });
+            const activeBtn = document.getElementById(`preset-${key}`);
+            if (activeBtn) {
+                activeBtn.className = 'preset-btn text-xs font-bold px-2.5 py-1.5 rounded-md bg-indigo-600 text-white shadow-xs transition whitespace-nowrap';
+            }
+
+            steps = generateTrace(currentScenario.secret, currentScenario.guesses, currentScenario.startAttempt);
+            renderStep(0);
+        }
+
+        // Keyboard shortcuts (Left / Right Arrow Keys)
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight') {
+                e.preventDefault();
+                stepForward();
+            } else if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                stepBack();
+            }
+        });
+
+        window.onload = function () {
+            renderCodePanel();
+            loadPreset('classic');
+
+            const codeContainer = document.getElementById('codeContainer');
+            if (codeContainer) {
+                codeContainer.addEventListener('scroll', () => {
+                    if (steps.length) drawDataFlowArrow(steps[currentStepIndex]);
+                });
+            }
+            window.addEventListener('scroll', () => {
+                if (steps.length) drawDataFlowArrow(steps[currentStepIndex]);
+            }, { passive: true });
+            window.addEventListener('resize', () => {
+                if (steps.length) drawDataFlowArrow(steps[currentStepIndex]);
+            });
+        };
+    </script>
+</body>
+</html>
